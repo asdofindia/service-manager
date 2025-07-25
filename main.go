@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"html/template"
 	"io"
 	"log"
@@ -11,38 +12,93 @@ import (
 	"strings"
 )
 
-type Webhooks map[string]interface{}
-type Service map[string]interface{}
-
-type Config struct {
-	User     string             `json:"user"`
-	Password string             `json:"password"`
-	Services map[string]Service `json:"services"`
+type FullAction struct {
+	actionType string
+	cmd        string
+	path       string
+	run        string
+	webhook    string
 }
 
+type Webhooks map[string]FullAction
+type Service map[string]FullAction
+
+type ConfigJSON struct {
+	User     string                 `json:"user"`
+	Password string                 `json:"password"`
+	Services map[string]interface{} `json:"services"`
+}
+
+type Config struct {
+	User     string
+	Password string
+	Services map[string]Service
+}
+
+var configJson ConfigJSON
 var config Config
 var webhooks Webhooks
 
-func loadConfig(path string) {
+func loadConfig(path string) error {
+	configJson = ConfigJSON{}
 	config = Config{}
 	webhooks = Webhooks{}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Fatalf("Failed to read config file: %v", err)
 	}
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err := json.Unmarshal(data, &configJson); err != nil {
 		log.Fatalf("Failed to parse config file: %v", err)
 	}
-	for _, service := range config.Services {
-		for _, action := range service {
-			if settings, ok := action.(map[string]interface{}); ok {
-				if path, ok := settings["webhook"].(string); ok {
-					webhooks[path] = settings
+
+	config.User = configJson.User
+	config.Password = configJson.Password
+
+	config.Services = make(map[string]Service)
+	for service_name, service := range configJson.Services {
+		if serviceSetting, ok := service.(map[string]interface{}); ok {
+			config.Services[service_name] = make(map[string]FullAction)
+			for action_name, action := range serviceSetting {
+				var actionFull FullAction
+				if cmd, ok := action.(string); ok {
+					actionFull.actionType = "cmd"
+					actionFull.cmd = cmd
+				} else if settings, ok := action.(map[string]interface{}); ok {
+					actionFull.actionType = "full"
+					path, ok := settings["path"].(string)
+					if !ok {
+						return errors.New("No valid path in " + service_name + "/" + action_name)
+					}
+					actionFull.path = path
+					run, ok := settings["run"].(string)
+					if !ok {
+						return errors.New("No valid run in " + service_name + "/" + action_name)
+					}
+					actionFull.run = run
+					webhook, ok := settings["webhook"].(string)
+					if ok {
+						actionFull.webhook = webhook
+					}
+
+				} else {
+					return errors.New("Invalid action type: must be a string or a map")
 				}
+				config.Services[service_name][action_name] = actionFull
 			}
+
+		} else {
+			return errors.New("Service not a configured correctly at " + service_name)
 		}
 	}
 
+	for _, service := range config.Services {
+		for _, action := range service {
+			if action.webhook != "" {
+				webhooks[action.webhook] = action
+			}
+		}
+	}
+	return nil
 }
 
 func basicAuth(next http.HandlerFunc) http.HandlerFunc {
@@ -89,7 +145,11 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func reloadControl(w http.ResponseWriter, r *http.Request) {
-	loadConfig("config.json")
+	err := loadConfig("config.json")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
 	io.WriteString(w, "Reloaded")
 	return
 }
@@ -114,34 +174,24 @@ func handleControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if cmd, ok := action.(string); ok {
+	switch action.actionType {
+	case "cmd":
 		w.Header().Set("Content-Type", "text/plain")
-		cmd := exec.Command("sh", "-c", cmd)
+		cmd := exec.Command("sh", "-c", action.cmd)
 		cmd.Stdout = w
 		cmd.Stderr = w
 		cmd.Run()
-
-	} else if settings, ok := action.(map[string]interface{}); ok {
-		path, ok := settings["path"].(string)
-		if !ok {
-			http.Error(w, "custom action needs a path", 400)
-			return
-		}
-		run, ok := settings["run"].(string)
-		if !ok {
-			http.Error(w, "custom action needs a file to execute", 400)
-			return
-		}
-
+		return
+	case "full":
 		w.Header().Set("Content-Type", "text/plain")
-		cmd := exec.Command("bash", run)
-		cmd.Dir = path
+		cmd := exec.Command("bash", action.run)
+		cmd.Dir = action.path
 		cmd.Stdout = w
 		cmd.Stderr = w
 		cmd.Run()
-
-	} else {
-		http.Error(w, "Invalid action type: must be a string or a map", 400)
+		return
+	default:
+		http.Error(w, "Unknown action type "+action.actionType, 400)
 		return
 	}
 
@@ -160,18 +210,12 @@ func handleWebhooks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	if settings, ok := action.(map[string]interface{}); ok {
-		if run, ok := settings["run"].(string); ok {
-			if path, ok := settings["path"].(string); ok {
-				w.Header().Set("Content-Type", "text/plain")
-				cmd := exec.Command("bash", run)
-				cmd.Dir = path
-				cmd.Stdout = w
-				cmd.Stderr = w
-				cmd.Run()
-			}
-		}
-	}
+	w.Header().Set("Content-Type", "text/plain")
+	cmd := exec.Command("bash", action.run)
+	cmd.Dir = action.path
+	cmd.Stdout = w
+	cmd.Stderr = w
+	cmd.Run()
 
 }
 
