@@ -213,13 +213,22 @@ func handleWebhooks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Webhook not found", http.StatusNotFound)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	flusher, _ := w.(http.Flusher)
+
 	cmd := exec.Command("bash", action.run)
 	cmd.Dir = action.path
-	cmd.Stdout = w
-	cmd.Stderr = w
-	cmd.Run()
+
+	stdoutPipe, _ := cmd.StdoutPipe()
+	stderrPipe, _ := cmd.StderrPipe()
+
+	go io.Copy(io.MultiWriter(os.Stdout, w), stdoutPipe)
+	go io.Copy(io.MultiWriter(os.Stderr, w), stderrPipe)
+
+	cmd.Start()
+	flusher.Flush()
+	cmd.Wait()
 
 }
 
