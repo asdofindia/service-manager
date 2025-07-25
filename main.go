@@ -3,20 +3,16 @@ package main
 import (
 	"encoding/json"
 	"html/template"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 )
 
-type Service struct {
-	Start string `json:"start"`
-	Stop  string `json:"stop"`
-	Status string `json:"status"`
-}
+type Service map[string]interface{}
 
 type Config struct {
+	User     string             `json:"user"`
 	Password string             `json:"password"`
 	Services map[string]Service `json:"services"`
 }
@@ -33,10 +29,14 @@ func loadConfig(path string) {
 	}
 }
 
-func basicAuth(next http.HandlerFunc, password string) http.HandlerFunc {
+func basicAuth(next http.HandlerFunc, username string, password string) http.HandlerFunc {
+	usernameDefault := "admin"
+	if username == "" {
+		username = usernameDefault
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, pass, ok := r.BasicAuth()
-		if !ok || user != "admin" || pass != password {
+		if !ok || user != username || pass != password {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -56,9 +56,9 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	<form method="POST" action="/control">
 		<input type="hidden" name="service" value="{{$name}}">
 		<b>{{$name}}</b>
-		<button name="action" value="start">Start</button>
-		<button name="action" value="stop">Stop</button>
-		<button name="action" value="status">Status</button>
+		{{range $actName, $action := $svc }}
+		<button name="action" value="{{$actName}}">{{$actName}}</button>
+		{{end}}
 	</form>
 	{{end}}
 	</body>
@@ -73,7 +73,7 @@ func handleControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serviceName := r.FormValue("service")
-	action := r.FormValue("action")
+	actionName := r.FormValue("action")
 
 	svc, ok := config.Services[serviceName]
 	if !ok {
@@ -81,36 +81,51 @@ func handleControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var cmdStr string
-	switch action {
-	case "start":
-		cmdStr = svc.Start
-	case "stop":
-		cmdStr = svc.Stop
-	case "status":
-		cmdStr = svc.Status
-	default:
+	action, ok := svc[actionName]
+	if !ok {
 		http.Error(w, "Unknown action", 400)
 		return
 	}
 
-	cmd := exec.Command("sh", "-c", cmdStr)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+	if cmd, ok := action.(string); ok {
+		w.Header().Set("Content-Type", "text/plain")
+		cmd := exec.Command("sh", "-c", cmd)
+		cmd.Stdout = w
+		cmd.Stderr = w
+		cmd.Run()
+
+	} else if settings, ok := action.(map[string]interface{}); ok {
+		path, ok := settings["path"].(string)
+		if !ok {
+			http.Error(w, "custom action needs a path", 400)
+			return
+		}
+		run, ok := settings["run"].(string)
+		if !ok {
+			http.Error(w, "custom action needs a file to execute", 400)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/plain")
+		cmd := exec.Command("bash", run)
+		cmd.Dir = path
+		cmd.Stdout = w
+		cmd.Stderr = w
+		cmd.Run()
+
+	} else {
+		http.Error(w, "Invalid action type: must be a string or a map", 400)
+		return
 	}
-	w.Header().Set("Content-Type", "text/plain")
-	io.WriteString(w, "Command output:\n")
-	w.Write(output)
+
 }
 
 func main() {
 	loadConfig("config.json")
 
-	http.HandleFunc("/", basicAuth(handleIndex, config.Password))
-	http.HandleFunc("/control", basicAuth(handleControl, config.Password))
+	http.HandleFunc("/", basicAuth(handleIndex, config.User, config.Password))
+	http.HandleFunc("/control", basicAuth(handleControl, config.User, config.Password))
 
 	log.Println("Starting server at :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
-
