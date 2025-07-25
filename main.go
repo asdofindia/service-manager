@@ -22,7 +22,10 @@ type FullAction struct {
 
 type Webhooks map[string]FullAction
 type Service map[string]FullAction
-
+type TemplateData struct {
+	Webhooks Webhooks
+	Config   Config
+}
 type ConfigJSON struct {
 	User     string                 `json:"user"`
 	Password string                 `json:"password"`
@@ -126,7 +129,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	<head><title>Service Manager</title></head>
 	<body>
 	<h1>Service Manager</h1>
-	{{range $name, $svc := .}}
+	{{range $name, $svc := .Config.Services}}
 	<form method="POST" action="/control">
 		<input type="hidden" name="service" value="{{$name}}">
 		<b>{{$name}}</b>
@@ -138,10 +141,11 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	<form method="POST" action="/reload">
 	<button>Reload</button>
 	</form>
+	Webhooks loaded: {{len .Webhooks}}
 	</body>
 	</html>`
 	t := template.Must(template.New("index").Parse(tmpl))
-	t.Execute(w, config.Services)
+	t.Execute(w, TemplateData{webhooks, config})
 }
 
 func reloadControl(w http.ResponseWriter, r *http.Request) {
