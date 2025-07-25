@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -29,7 +30,9 @@ func loadConfig(path string) {
 	}
 }
 
-func basicAuth(next http.HandlerFunc, username string, password string) http.HandlerFunc {
+func basicAuth(next http.HandlerFunc) http.HandlerFunc {
+	username := config.User
+	password := config.Password
 	usernameDefault := "admin"
 	if username == "" {
 		username = usernameDefault
@@ -61,10 +64,19 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		{{end}}
 	</form>
 	{{end}}
+	<form method="POST" action="/reload">
+	<button>Reload</button>
+	</form>
 	</body>
 	</html>`
 	t := template.Must(template.New("index").Parse(tmpl))
 	t.Execute(w, config.Services)
+}
+
+func reloadControl(w http.ResponseWriter, r *http.Request) {
+	loadConfig("config.json")
+	io.WriteString(w, "Reloaded")
+	return
 }
 
 func handleControl(w http.ResponseWriter, r *http.Request) {
@@ -123,8 +135,9 @@ func handleControl(w http.ResponseWriter, r *http.Request) {
 func main() {
 	loadConfig("config.json")
 
-	http.HandleFunc("/", basicAuth(handleIndex, config.User, config.Password))
-	http.HandleFunc("/control", basicAuth(handleControl, config.User, config.Password))
+	http.HandleFunc("/", basicAuth(handleIndex))
+	http.HandleFunc("/control", basicAuth(handleControl))
+	http.HandleFunc("/reload", basicAuth(reloadControl))
 
 	log.Println("Starting server at :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
