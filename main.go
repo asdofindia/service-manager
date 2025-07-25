@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 )
 
+type Webhooks map[string]interface{}
 type Service map[string]interface{}
 
 type Config struct {
@@ -19,9 +21,11 @@ type Config struct {
 }
 
 var config Config
+var webhooks Webhooks
 
 func loadConfig(path string) {
 	config = Config{}
+	webhooks = Webhooks{}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Fatalf("Failed to read config file: %v", err)
@@ -29,6 +33,16 @@ func loadConfig(path string) {
 	if err := json.Unmarshal(data, &config); err != nil {
 		log.Fatalf("Failed to parse config file: %v", err)
 	}
+	for _, service := range config.Services {
+		for _, action := range service {
+			if settings, ok := action.(map[string]interface{}); ok {
+				if path, ok := settings["webhook"].(string); ok {
+					webhooks[path] = settings
+				}
+			}
+		}
+	}
+
 }
 
 func basicAuth(next http.HandlerFunc) http.HandlerFunc {
@@ -133,12 +147,41 @@ func handleControl(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func handleWebhooks(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 3 {
+		http.Error(w, "Invalid webhook path", http.StatusBadRequest)
+		return
+	}
+	secret := parts[2]
+	action, ok := webhooks[secret]
+	if !ok {
+		http.Error(w, "Webhook not found", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	if settings, ok := action.(map[string]interface{}); ok {
+		if run, ok := settings["run"].(string); ok {
+			if path, ok := settings["path"].(string); ok {
+				w.Header().Set("Content-Type", "text/plain")
+				cmd := exec.Command("bash", run)
+				cmd.Dir = path
+				cmd.Stdout = w
+				cmd.Stderr = w
+				cmd.Run()
+			}
+		}
+	}
+
+}
+
 func main() {
 	loadConfig("config.json")
 
-	http.HandleFunc("/", basicAuth(handleIndex))
+	http.HandleFunc("/{$}", basicAuth(handleIndex))
 	http.HandleFunc("/control", basicAuth(handleControl))
 	http.HandleFunc("/reload", basicAuth(reloadControl))
+	http.HandleFunc("/webhook/{secret}", handleWebhooks)
 
 	log.Println("Starting server at :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
