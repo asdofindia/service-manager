@@ -215,21 +215,16 @@ func handleWebhooks(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
-	flusher, _ := w.(http.Flusher)
+	w.Write([]byte("success\n"))
 
-	cmd := exec.Command("bash", action.run)
-	cmd.Dir = action.path
-
-	stdoutPipe, _ := cmd.StdoutPipe()
-	stderrPipe, _ := cmd.StderrPipe()
-
-	go io.Copy(io.MultiWriter(os.Stdout, w), stdoutPipe)
-	go io.Copy(io.MultiWriter(os.Stderr, w), stderrPipe)
-
-	cmd.Start()
-	flusher.Flush()
-	cmd.Wait()
-
+	go func() {
+		cmd := exec.Command("bash", action.run)
+		cmd.Dir = action.path
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Run()
+	}()
+	return
 }
 
 func main() {
