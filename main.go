@@ -130,21 +130,33 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>Service Manager</title>
+		<style>
+			.service {
+				margin: 1rem 0;
+			}
+			.action {
+				padding: 1rem;
+			}
+		</style>
 	</head>
 	<body>
 	<h1>Service Manager</h1>
 	{{range $name, $svc := .Config.Services}}
 	<form method="POST" action="/control">
+		<div class="service">
 		<input type="hidden" name="service" value="{{$name}}">
 		<b>{{$name}}</b>
 		{{range $actName, $action := $svc }}
-		<button name="action" value="{{$actName}}">{{$actName}}</button>
+		<button class="action" name="action" value="{{$actName}}">{{$actName}}</button>
 		{{end}}
+		</div>
 	</form>
 	{{end}}
+	<div class="service">
 	<form method="POST" action="/reload">
-	<button>Reload</button>
+	<button class="action">Reload</button>
 	</form>
+	</div>
 	Webhooks loaded: {{len .Webhooks}}
 	</body>
 	</html>`
