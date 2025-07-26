@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"html/template"
@@ -13,11 +14,12 @@ import (
 )
 
 type FullAction struct {
-	actionType string
-	cmd        string
-	path       string
-	run        string
-	webhook    string
+	actionType             string
+	cmd                    string
+	path                   string
+	run                    string
+	webhook                string
+	allowParallelExecution bool
 }
 
 type Webhooks map[string]FullAction
@@ -81,6 +83,10 @@ func loadConfig(path string) error {
 					webhook, ok := settings["webhook"].(string)
 					if ok {
 						actionFull.webhook = webhook
+					}
+					parallel, ok := settings["allowParallelExecution"].(bool)
+					if ok {
+						actionFull.allowParallelExecution = parallel
 					}
 
 				} else {
@@ -184,6 +190,8 @@ func handleControl(w http.ResponseWriter, r *http.Request) {
 
 }
 
+var webhookContextCancels = make(map[string]context.CancelFunc)
+
 func handleWebhooks(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 3 {
@@ -196,12 +204,20 @@ func handleWebhooks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Webhook not found", http.StatusNotFound)
 		return
 	}
+	if !action.allowParallelExecution {
+		if cancel, ok := webhookContextCancels[secret]; ok {
+			cancel()
+		}
+	}
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("success\n"))
 
 	go func() {
-		cmd := exec.Command("bash", action.run)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		webhookContextCancels[secret] = cancel
+		cmd := exec.CommandContext(ctx, "bash", action.run)
 		cmd.Dir = action.path
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
