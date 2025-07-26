@@ -139,7 +139,10 @@ func reloadControl(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	w.WriteHeader(http.StatusAccepted)
+	io.WriteString(w, "<!DOCTYPE html><html><body><pre>")
 	io.WriteString(w, "Reloaded")
+	io.WriteString(w, "</pre><a href='/'>Go back</a></body></html>")
 	return
 }
 
