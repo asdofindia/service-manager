@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"log"
@@ -14,6 +15,7 @@ import (
 )
 
 type FullAction struct {
+	Name                   string
 	actionType             string
 	cmd                    string
 	path                   string
@@ -92,6 +94,7 @@ func loadConfig(path string) error {
 				} else {
 					return errors.New("Invalid action type: must be a string or a map")
 				}
+				actionFull.Name = fmt.Sprint(service_name, "/", action_name)
 				config.Services[service_name][action_name] = actionFull
 			}
 

@@ -33,6 +33,11 @@
         <button class="action">Reload</button>
       </form>
     </div>
-    Webhooks loaded: {{len .Webhooks}}
+    Webhooks loaded:
+    <ol>
+      {{range $secret, $action := .Webhooks }}
+      <li>{{$action.Name}}</li>
+      {{end}}
+    </ol>
   </body>
 </html>
