@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -131,9 +132,12 @@ func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+//go:embed views/*
+var views embed.FS
+
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	t := template.Must(template.ParseFiles("views/index.html"))
-	t.Execute(w, TemplateData{webhooks, config})
+	t := template.Must(template.ParseFS(views, "views/*.html"))
+	t.ExecuteTemplate(w, "index.html", TemplateData{webhooks, config})
 }
 
 func reloadControl(w http.ResponseWriter, r *http.Request) {
