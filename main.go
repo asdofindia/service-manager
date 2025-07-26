@@ -126,7 +126,11 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	tmpl := `
 	<!DOCTYPE html>
 	<html>
-	<head><title>Service Manager</title></head>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Service Manager</title>
+	</head>
 	<body>
 	<h1>Service Manager</h1>
 	{{range $name, $svc := .Config.Services}}
