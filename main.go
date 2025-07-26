@@ -159,19 +159,23 @@ func handleControl(w http.ResponseWriter, r *http.Request) {
 
 	switch action.actionType {
 	case "cmd":
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, "<!DOCTYPE html><html><body><pre>")
 		cmd := exec.Command("sh", "-c", action.cmd)
 		cmd.Stdout = w
 		cmd.Stderr = w
 		cmd.Run()
+		io.WriteString(w, "</pre><a href='/'>Go back</a></body></html>")
 		return
 	case "full":
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, "<!DOCTYPE html><html><body><pre>")
 		cmd := exec.Command("bash", action.run)
 		cmd.Dir = action.path
 		cmd.Stdout = w
 		cmd.Stderr = w
 		cmd.Run()
+		io.WriteString(w, "</pre><a href='/'>Go back</a></body></html>")
 		return
 	default:
 		http.Error(w, "Unknown action type "+action.actionType, 400)
