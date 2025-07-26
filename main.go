@@ -134,9 +134,9 @@ func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 
 //go:embed views/*
 var views embed.FS
+var t = template.Must(template.ParseFS(views, "views/*.html"))
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	t := template.Must(template.ParseFS(views, "views/*.html"))
 	t.ExecuteTemplate(w, "index.html", TemplateData{webhooks, config})
 }
 
@@ -147,9 +147,9 @@ func reloadControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
-	io.WriteString(w, "<!DOCTYPE html><html><body><pre>")
+	t.ExecuteTemplate(w, "header.html", nil)
 	io.WriteString(w, "Reloaded")
-	io.WriteString(w, "</pre><a href='/'>Go back</a></body></html>")
+	t.ExecuteTemplate(w, "footer.html", nil)
 	return
 }
 
@@ -176,22 +176,22 @@ func handleControl(w http.ResponseWriter, r *http.Request) {
 	switch action.actionType {
 	case "cmd":
 		w.Header().Set("Content-Type", "text/html")
-		io.WriteString(w, "<!DOCTYPE html><html><body><pre>")
+		t.ExecuteTemplate(w, "header.html", nil)
 		cmd := exec.Command("sh", "-c", action.cmd)
 		cmd.Stdout = w
 		cmd.Stderr = w
 		cmd.Run()
-		io.WriteString(w, "</pre><a href='/'>Go back</a></body></html>")
+		t.ExecuteTemplate(w, "footer.html", nil)
 		return
 	case "full":
 		w.Header().Set("Content-Type", "text/html")
-		io.WriteString(w, "<!DOCTYPE html><html><body><pre>")
+		t.ExecuteTemplate(w, "header.html", nil)
 		cmd := exec.Command("bash", action.run)
 		cmd.Dir = action.path
 		cmd.Stdout = w
 		cmd.Stderr = w
 		cmd.Run()
-		io.WriteString(w, "</pre><a href='/'>Go back</a></body></html>")
+		t.ExecuteTemplate(w, "footer.html", nil)
 		return
 	default:
 		http.Error(w, "Unknown action type "+action.actionType, 400)
