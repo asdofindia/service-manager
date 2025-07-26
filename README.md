@@ -17,7 +17,8 @@
       "update": {
         "path": "/home/user/path/to/dir",
         "run": "run.sh",
-        "webhook": "path_segment_that_triggers_this_webhook"
+        "webhook": "path_segment_that_triggers_this_webhook",
+        "allowParallelExecutions": false
       }
     }
   }
@@ -70,3 +71,5 @@ Alternatively, an action can be an object of the form `{path: "/path/to/dir", ru
 In the object form, the action can also contain a `webhook` property. The path segment specified here will be added to the URL scheme `:8080/webhook/{path-segment}`. So, if your action has "webhook" property set to "trigger-action-1", say, visiting the URL `:8080/webhook/trigger-action-1` will trigger the correspoding `run` script.
 
 This can be used as webhook for github, gitlab, etc
+
+If you want webhook calls made close to each other to run multiple shells (possibly running simultaneously), you can turn `allowParallelExecution` to `true`
